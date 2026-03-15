@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "870194509289",
+    "project_id": "aerocab-5d474",
+    "storage_bucket": "aerocab-5d474.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:870194509289:android:4db4acd417259b8eecc778",
+        "android_client_info": {
+          "package_name": "com.example.aerocab"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBgmNiik5lKCsWNPSuRsjhyUI50g-jFBF4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:870194509289:android:9e0700fc465d8919ecc778",
+        "android_client_info": {
+          "package_name": "com.example.myapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBgmNiik5lKCsWNPSuRsjhyUI50g-jFBF4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
