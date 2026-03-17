@@ -25,81 +25,163 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   Future<void> _login() async {
     if (_formKey.currentState!.validate()) {
-      setState(() {
-        _isLoading = true;
-      });
-
+      setState(() => _isLoading = true);
       try {
-        await ref
-            .read(authServiceProvider)
-            .signInWithEmailAndPassword(
-              _emailController.text.trim(),
-              _passwordController.text.trim(),
-            );
-        // Navigation is handled by the authStateChanges stream in SplashScreen
+        await ref.read(authServiceProvider).signInWithEmailAndPassword(
+          _emailController.text.trim(),
+          _passwordController.text.trim(),
+        );
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text(e.toString())));
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(e.toString())),
+          );
         }
       } finally {
-        if (mounted) {
-          setState(() {
-            _isLoading = false;
-          });
-        }
+        if (mounted) setState(() => _isLoading = false);
       }
     }
   }
 
+  InputDecoration _fieldDecoration(
+    String label,
+    IconData icon,
+    ColorScheme cs,
+  ) {
+    return InputDecoration(
+      labelText: label,
+      prefixIcon: Icon(icon, size: 20, color: cs.onSurface.withValues(alpha: 0.5)),
+      filled: true,
+      fillColor: cs.surfaceContainerHighest.withValues(alpha: 0.35),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide.none,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: cs.outline.withValues(alpha: 0.2)),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: cs.primary, width: 1.5),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: cs.error),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: cs.error, width: 1.5),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Login')),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Form(
-          key: _formKey,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 28.0),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              TextFormField(
-                controller: _emailController,
-                decoration: const InputDecoration(labelText: 'Email'),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter your email';
-                  }
-                  return null;
-                },
+              const SizedBox(height: 72),
+              Icon(Icons.flight_takeoff_rounded, size: 40, color: cs.primary),
+              const SizedBox(height: 20),
+              Text(
+                'AeroCab',
+                style: tt.displayLarge?.copyWith(
+                  fontSize: 34,
+                  color: cs.onSurface,
+                ),
               ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _passwordController,
-                decoration: const InputDecoration(labelText: 'Password'),
-                obscureText: true,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter your password';
-                  }
-                  return null;
-                },
+              const SizedBox(height: 6),
+              Text(
+                'Tekrar hoş geldiniz',
+                style: tt.bodyMedium?.copyWith(
+                  color: cs.onSurface.withValues(alpha: 0.5),
+                  fontSize: 15,
+                ),
               ),
-              const SizedBox(height: 32),
-              if (_isLoading)
-                const CircularProgressIndicator()
-              else
-                ElevatedButton(onPressed: _login, child: const Text('Login')),
-              TextButton(
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (context) => const RegisterScreen(),
+              const SizedBox(height: 52),
+              Form(
+                key: _formKey,
+                child: Column(
+                  children: [
+                    TextFormField(
+                      controller: _emailController,
+                      keyboardType: TextInputType.emailAddress,
+                      decoration: _fieldDecoration(
+                        'E-posta',
+                        Icons.email_outlined,
+                        cs,
+                      ),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Lütfen e-posta adresinizi girin';
+                        }
+                        return null;
+                      },
                     ),
-                  );
-                },
-                child: const Text('Don\'t have an account? Register'),
+                    const SizedBox(height: 14),
+                    TextFormField(
+                      controller: _passwordController,
+                      obscureText: true,
+                      decoration: _fieldDecoration(
+                        'Şifre',
+                        Icons.lock_outline,
+                        cs,
+                      ),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Lütfen şifrenizi girin';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 28),
+                    if (_isLoading)
+                      const SizedBox(
+                        height: 52,
+                        child: Center(child: CircularProgressIndicator()),
+                      )
+                    else
+                      SizedBox(
+                        width: double.infinity,
+                        height: 52,
+                        child: ElevatedButton(
+                          onPressed: _login,
+                          style: ElevatedButton.styleFrom(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                          child: const Text(
+                            'Giriş Yap',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    const SizedBox(height: 16),
+                    TextButton(
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const RegisterScreen(),
+                        ),
+                      ),
+                      child: Text(
+                        'Hesabınız yok mu? Kayıt olun',
+                        style: TextStyle(color: cs.primary, fontSize: 14),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),

@@ -21,14 +21,19 @@ class NotificationService {
     );
 
     // Cihazın FCM token'ını al ve veritabanına kaydet
-    final fcmToken = await _firebaseMessaging.getToken();
-    log('FCM Token: $fcmToken', name: 'NotificationService');
-    if (fcmToken != null) {
-      await _saveTokenToDatabase(userId, fcmToken);
-      // Token yenilendiğinde veritabanını güncelle
-      _firebaseMessaging.onTokenRefresh.listen((newToken) {
-        _saveTokenToDatabase(userId, newToken);
-      });
+    // iOS'ta APNS token henüz hazır olmayabilir, hata durumunda atla
+    try {
+      final fcmToken = await _firebaseMessaging.getToken();
+      log('FCM Token: $fcmToken', name: 'NotificationService');
+      if (fcmToken != null) {
+        await _saveTokenToDatabase(userId, fcmToken);
+        // Token yenilendiğinde veritabanını güncelle
+        _firebaseMessaging.onTokenRefresh.listen((newToken) {
+          _saveTokenToDatabase(userId, newToken);
+        });
+      }
+    } catch (e) {
+      log('FCM token alınamadı: $e', name: 'NotificationService');
     }
 
     // Android için bildirim kanalı oluşturma

@@ -1,70 +1,427 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:myapp/core/database_service.dart';
 import 'package:myapp/features/auth/screens/auth_gate.dart';
+import 'package:myapp/presentation/widgets/rating_dialog.dart';
+import 'package:myapp/presentation/screens/app_settings_screen.dart';
+import 'package:myapp/presentation/screens/contact_screen.dart';
+import 'package:myapp/presentation/screens/edit_profile_screen.dart';
+import 'package:myapp/presentation/screens/legal_screen.dart';
 import 'package:myapp/presentation/screens/ride_history_screen.dart';
+import 'package:myapp/presentation/screens/subscription_screen.dart';
+import 'package:myapp/presentation/screens/user_guide_screen.dart';
 
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
 
   @override
+  ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends ConsumerState<ProfileScreen> {
+  Map<String, dynamic>? _userData;
+  bool _loading = true;
+  bool _isDriver = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      if (mounted) setState(() => _loading = false);
+      return;
+    }
+    final db = ref.read(databaseServiceProvider);
+    final data = await db.getUserData(user.uid);
+    final role = await db.getUserRole(user.uid);
+    if (mounted) {
+      setState(() {
+        _userData = data;
+        _isDriver = role == UserRole.driver;
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _deleteAccount() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Hesabı Sil'),
+        content: const Text(
+          'Hesabınızı silmek istediğinizden emin misiniz? Bu işlem geri alınamaz ve tüm verileriniz silinir.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Vazgeç'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Sil',
+                style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      await ref.read(databaseServiceProvider).deleteUserAccount(user.uid);
+      await user.delete();
+      if (mounted) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const AuthGate()),
+          (_) => false,
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Hesap silinemedi: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _signOut() async {
+    await FirebaseAuth.instance.signOut();
+    if (mounted) {
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const AuthGate()),
+        (_) => false,
+      );
+    }
+  }
+
+  void _push(Widget screen) {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
+  }
+
+  Future<void> _editProfile() async {
+    if (_userData == null) return;
+    final result = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => EditProfileScreen(
+          userData: _userData!,
+          isDriver: _isDriver,
+        ),
+      ),
+    );
+    if (result == true) _load();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final user = FirebaseAuth.instance.currentUser;
 
+    if (_loading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    final name = _userData?['fullName'] as String? ?? user?.email ?? '';
+    final email = _userData?['email'] as String? ?? user?.email ?? '';
+    final phone = _userData?['phone'] as String?;
+    final photoUrl = _userData?['photoUrl'] as String?;
+    final initials = name.isNotEmpty ? name[0].toUpperCase() : '?';
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Profile')),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
+      backgroundColor: cs.surface,
+      appBar: AppBar(
+        title: const Text('Profil'),
+        centerTitle: true,
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            const Center(
-              child: CircleAvatar(
-                radius: 50,
-                child: Icon(Icons.person, size: 50),
+          children: [
+            // ── Avatar & Info ────────────────────────────────────────────
+            Center(
+              child: Column(
+                children: [
+                  const SizedBox(height: 8),
+                  CircleAvatar(
+                    radius: 46,
+                    backgroundColor: cs.primaryContainer,
+                    backgroundImage:
+                        photoUrl != null ? NetworkImage(photoUrl) : null,
+                    child: photoUrl == null
+                        ? Text(
+                            initials,
+                            style: TextStyle(
+                              fontSize: 32,
+                              fontWeight: FontWeight.bold,
+                              color: cs.primary,
+                            ),
+                          )
+                        : null,
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    name,
+                    style: const TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    email,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: cs.onSurface.withValues(alpha: 0.5),
+                    ),
+                  ),
+                  if (phone != null && phone.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      phone,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: cs.onSurface.withValues(alpha: 0.5),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: _isDriver
+                          ? Colors.orange.withValues(alpha: 0.15)
+                          : cs.primaryContainer.withValues(alpha: 0.5),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      _isDriver ? 'Sürücü' : 'Yolcu',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: _isDriver ? Colors.orange.shade700 : cs.primary,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  if (user != null)
+                    UserRatingWidget(
+                      uid: user.uid,
+                      dbService: ref.read(databaseServiceProvider),
+                    ),
+                  const SizedBox(height: 24),
+                ],
               ),
             ),
-            const SizedBox(height: 20),
-            Text('Email:', style: Theme.of(context).textTheme.titleMedium),
-            Text(
-              user?.email ?? 'Not logged in',
-              style: Theme.of(context).textTheme.bodyLarge,
+
+            // ── Hesabım ──────────────────────────────────────────────────
+            _SectionLabel(label: 'Hesabım'),
+            _MenuCard(
+              children: [
+                _MenuItem(
+                  icon: Icons.edit_outlined,
+                  title: 'Profili Düzenle',
+                  onTap: _editProfile,
+                ),
+                const _MenuDivider(),
+                _MenuItem(
+                  icon: Icons.subscriptions_outlined,
+                  title: 'Aboneliğim',
+                  onTap: () => _push(const SubscriptionScreen()),
+                ),
+              ],
             ),
-            const SizedBox(height: 30),
-            ListTile(
-              leading: const Icon(Icons.history),
-              title: const Text('Ride History'),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const RideHistoryScreen(),
-                  ),
-                );
-              },
+
+            const SizedBox(height: 16),
+
+            // ── Yolculuk ─────────────────────────────────────────────────
+            _SectionLabel(label: 'Yolculuk'),
+            _MenuCard(
+              children: [
+                _MenuItem(
+                  icon: Icons.history_rounded,
+                  title: 'Yolculuk Geçmişi',
+                  onTap: () => _push(const RideHistoryScreen()),
+                ),
+              ],
             ),
-            const Spacer(),
+
+            const SizedBox(height: 16),
+
+            // ── Yardım & Destek ──────────────────────────────────────────
+            _SectionLabel(label: 'Yardım & Destek'),
+            _MenuCard(
+              children: [
+                _MenuItem(
+                  icon: Icons.menu_book_outlined,
+                  title: 'Kullanım Kılavuzu',
+                  onTap: () => _push(const UserGuideScreen()),
+                ),
+                const _MenuDivider(),
+                _MenuItem(
+                  icon: Icons.headset_mic_outlined,
+                  title: 'Bize Ulaşın',
+                  onTap: () => _push(const ContactScreen()),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 16),
+
+            // ── Yasal ────────────────────────────────────────────────────
+            _SectionLabel(label: 'Yasal'),
+            _MenuCard(
+              children: [
+                _MenuItem(
+                  icon: Icons.gavel_rounded,
+                  title: 'Kullanıcı Sözleşmesi & KVKK',
+                  onTap: () => _push(const LegalScreen()),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 16),
+
+            // ── Uygulama ─────────────────────────────────────────────────
+            _SectionLabel(label: 'Uygulama'),
+            _MenuCard(
+              children: [
+                _MenuItem(
+                  icon: Icons.settings_outlined,
+                  title: 'Uygulama Ayarları',
+                  onTap: () => _push(const AppSettingsScreen()),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 24),
+
+            // ── Danger zone ──────────────────────────────────────────────
             SizedBox(
               width: double.infinity,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Theme.of(context).colorScheme.error,
-                  foregroundColor: Theme.of(context).colorScheme.onError,
+              height: 48,
+              child: OutlinedButton.icon(
+                onPressed: _signOut,
+                icon: const Icon(Icons.logout_rounded, size: 18),
+                label: const Text('Çıkış Yap'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: cs.error,
+                  side: BorderSide(color: cs.error.withValues(alpha: 0.4)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
-                onPressed: () async {
-                  await FirebaseAuth.instance.signOut();
-                  if (context.mounted) {
-                    Navigator.of(context).pushAndRemoveUntil(
-                      MaterialPageRoute(builder: (context) => const AuthGate()),
-                      (Route<dynamic> route) => false,
-                    );
-                  }
-                },
-                child: const Text('Logout'),
               ),
             ),
+            const SizedBox(height: 12),
+            Center(
+              child: TextButton(
+                onPressed: _deleteAccount,
+                child: Text(
+                  'Hesabı Sil',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: cs.onSurface.withValues(alpha: 0.4),
+                    decoration: TextDecoration.underline,
+                    decorationColor: cs.onSurface.withValues(alpha: 0.3),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 32),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _SectionLabel extends StatelessWidget {
+  const _SectionLabel({required this.label});
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, bottom: 8),
+      child: Text(
+        label.toUpperCase(),
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: cs.onSurface.withValues(alpha: 0.4),
+          letterSpacing: 0.8,
+        ),
+      ),
+    );
+  }
+}
+
+class _MenuCard extends StatelessWidget {
+  const _MenuCard({required this.children});
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: cs.outline.withValues(alpha: 0.12)),
+      ),
+      child: Column(children: children),
+    );
+  }
+}
+
+class _MenuItem extends StatelessWidget {
+  const _MenuItem({
+    required this.icon,
+    required this.title,
+    required this.onTap,
+  });
+  final IconData icon;
+  final String title;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return ListTile(
+      dense: true,
+      leading: Icon(icon, color: cs.primary, size: 20),
+      title: Text(title,
+          style:
+              const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+      trailing: Icon(Icons.chevron_right_rounded,
+          color: cs.onSurface.withValues(alpha: 0.35), size: 20),
+      onTap: onTap,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+    );
+  }
+}
+
+class _MenuDivider extends StatelessWidget {
+  const _MenuDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Divider(
+      height: 1,
+      indent: 56,
+      color: cs.outline.withValues(alpha: 0.12),
     );
   }
 }

@@ -19,7 +19,7 @@ class AuthService {
       );
     } on FirebaseAuthException catch (e) {
       // TODO: Handle specific Firebase Auth errors (e.g., user-not-found)
-      throw Exception('Failed to sign in: ${e.message}');
+      throw Exception('Giriş yapılamadı: ${e.message}');
     }
   }
 
@@ -34,7 +34,7 @@ class AuthService {
       );
     } on FirebaseAuthException catch (e) {
       // TODO: Handle specific Firebase Auth errors (e.g., email-already-in-use)
-      throw Exception('Failed to register: ${e.message}');
+      throw Exception('Kayıt olunamadı: ${e.message}');
     }
   }
 
