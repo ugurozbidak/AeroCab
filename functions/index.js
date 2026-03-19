@@ -17,7 +17,17 @@ async function sendNotification(userId, title, body, data = {}) {
       notification: { title, body },
       data: { ...data, click_action: "FLUTTER_NOTIFICATION_CLICK" },
       apns: {
-        payload: { aps: { sound: "default", badge: 1 } },
+        headers: {
+          "apns-priority": "10",
+          "apns-push-type": "alert",
+        },
+        payload: {
+          aps: {
+            sound: "default",
+            badge: 1,
+            "content-available": 1,
+          },
+        },
       },
       android: {
         priority: "high",
