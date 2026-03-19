@@ -7,10 +7,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:myapp/core/alert_service.dart';
-import 'package:myapp/core/database_service.dart';
-import 'package:myapp/features/subscription/screens/subscription_paywall_screen.dart';
-import 'package:myapp/presentation/widgets/rating_dialog.dart';
+import 'package:aerocab/core/alert_service.dart';
+import 'package:aerocab/core/database_service.dart';
+import 'package:aerocab/features/subscription/screens/subscription_paywall_screen.dart';
+import 'package:aerocab/presentation/widgets/rating_dialog.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 enum _DriverRideState { idle, assigned, headingToPickup, onRoute }
@@ -492,27 +492,33 @@ class _DriverDashboardScreenState
                   width: double.infinity,
                   height: 54,
                   child: ElevatedButton(
-                    onPressed: () {
-                      if (_rideState == _DriverRideState.assigned) {
-                        ref
-                            .read(databaseServiceProvider)
-                            .updateReservationStatus(
-                                _reservationId!, 'heading_to_pickup');
-                        setState(() =>
-                            _rideState = _DriverRideState.headingToPickup);
-                      } else if (_rideState ==
-                          _DriverRideState.headingToPickup) {
-                        ref
-                            .read(databaseServiceProvider)
-                            .updateReservationStatus(
-                                _reservationId!, 'on_route');
-                        setState(
-                            () => _rideState = _DriverRideState.onRoute);
-                      } else {
-                        ref
-                            .read(databaseServiceProvider)
-                            .updateReservationStatus(
-                                _reservationId!, 'completed');
+                    onPressed: () async {
+                      final db = ref.read(databaseServiceProvider);
+                      final messenger = ScaffoldMessenger.of(context);
+                      try {
+                        if (_rideState == _DriverRideState.assigned) {
+                          await db.updateReservationStatus(
+                              _reservationId!, 'heading_to_pickup');
+                          if (mounted) {
+                            setState(() =>
+                                _rideState = _DriverRideState.headingToPickup);
+                          }
+                        } else if (_rideState ==
+                            _DriverRideState.headingToPickup) {
+                          await db.updateReservationStatus(
+                              _reservationId!, 'on_route');
+                          if (mounted) {
+                            setState(
+                                () => _rideState = _DriverRideState.onRoute);
+                          }
+                        } else {
+                          await db.updateReservationStatus(
+                              _reservationId!, 'completed');
+                        }
+                      } catch (e) {
+                        messenger.showSnackBar(
+                          SnackBar(content: Text('Güncelleme başarısız: $e')),
+                        );
                       }
                     },
                     style: ElevatedButton.styleFrom(

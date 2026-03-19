@@ -3,17 +3,27 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import 'package:myapp/core/purchases_service.dart';
-import 'package:myapp/features/auth/screens/auth_gate.dart';
-import 'package:myapp/firebase_options.dart';
+import 'package:aerocab/core/notification_service.dart';
+import 'package:aerocab/core/purchases_service.dart';
+import 'package:aerocab/features/auth/screens/auth_gate.dart';
+import 'package:aerocab/firebase_options.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:provider/provider.dart' as old_provider;
 import 'package:shared_preferences/shared_preferences.dart';
+
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await initializeDateFormatting('tr');
   await PurchasesService.init();
+
+  // Background FCM handler — main'den önce kayıt edilmeli
+  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+
+  // Navigator key'i NotificationService'e ver
+  NotificationService.navigatorKey = navigatorKey;
 
   // Kayıtlı temayı yükle
   final prefs = await SharedPreferences.getInstance();
@@ -148,9 +158,11 @@ class MyApp extends StatelessWidget {
         builder: (context, themeProvider, child) {
           return MaterialApp(
             title: 'AeroCab',
+            navigatorKey: navigatorKey,
             theme: lightTheme,
             darkTheme: darkTheme,
             themeMode: themeProvider.themeMode,
+            routes: {'/home': (_) => const AuthGate()},
             home: const AuthGate(),
             debugShowCheckedModeBanner: false,
           );

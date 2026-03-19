@@ -1,19 +1,18 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:myapp/core/database_service.dart';
+import 'package:purchases_flutter/purchases_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:aerocab/core/purchases_service.dart';
 
-class SubscriptionScreen extends ConsumerStatefulWidget {
+class SubscriptionScreen extends StatefulWidget {
   const SubscriptionScreen({super.key});
 
   @override
-  ConsumerState<SubscriptionScreen> createState() => _SubscriptionScreenState();
+  State<SubscriptionScreen> createState() => _SubscriptionScreenState();
 }
 
-class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
-  Map<String, dynamic>? _subData;
+class _SubscriptionScreenState extends State<SubscriptionScreen> {
+  CustomerInfo? _customerInfo;
   bool _loading = true;
 
   @override
@@ -23,49 +22,62 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
   }
 
   Future<void> _load() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-    final data =
-        await ref.read(databaseServiceProvider).getSubscriptionData(user.uid);
-    if (mounted) setState(() { _subData = data; _loading = false; });
+    try {
+      final info = await Purchases.getCustomerInfo();
+      if (mounted) setState(() { _customerInfo = info; _loading = false; });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
-  Future<void> _cancel() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Aboneliği İptal Et'),
-        content: const Text(
-          'Aboneliğinizi iptal etmek istediğinizden emin misiniz? Mevcut dönem sonunda erişiminiz sona erecektir.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Vazgeç'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child:
-                const Text('İptal Et', style: TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-    await ref.read(databaseServiceProvider).cancelSubscription(user.uid);
-    if (mounted) {
+  EntitlementInfo? get _entitlement =>
+      _customerInfo?.entitlements.active[PurchasesService.entitlementId];
+
+  String get _planName {
+    final id = _entitlement?.productIdentifier ?? '';
+    if (id.contains('annual') || id.contains('yearly')) return 'Yıllık';
+    return 'Aylık';
+  }
+
+  String get _periodType {
+    switch (_entitlement?.periodType) {
+      case PeriodType.trial:
+        return 'Ücretsiz Deneme';
+      case PeriodType.intro:
+        return 'Tanıtım Dönemi';
+      default:
+        return _planName;
+    }
+  }
+
+  String? get _expirationDate {
+    final date = _entitlement?.expirationDate;
+    if (date == null) return null;
+    final local = DateTime.parse(date).toLocal();
+    return DateFormat('d MMMM y – HH:mm', 'tr').format(local);
+  }
+
+  bool get _willRenew => _entitlement?.willRenew ?? false;
+
+  Future<void> _manageSubscription() async {
+    final uri = Uri.parse('https://apps.apple.com/account/subscriptions');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Aboneliğiniz iptal edildi.')),
+        const SnackBar(
+          content: Text(
+            'Ayarlar → Apple ID → Abonelikler yolunu izleyerek aboneliğinizi yönetebilirsiniz.',
+          ),
+        ),
       );
-      await _load();
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final entitlement = _entitlement;
 
     return Scaffold(
       appBar: AppBar(
@@ -78,7 +90,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
           ? const Center(child: CircularProgressIndicator())
           : Padding(
               padding: const EdgeInsets.all(24),
-              child: _subData == null
+              child: entitlement == null
                   ? Center(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
@@ -115,8 +127,8 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
                             children: [
                               Row(
                                 children: [
-                                  Icon(Icons.verified_rounded,
-                                      color: cs.primary, size: 24),
+                                  const Icon(Icons.workspace_premium_rounded,
+                                      color: Color(0xFFFFD700), size: 24),
                                   const SizedBox(width: 10),
                                   Text(
                                     'AeroCab Premium',
@@ -131,53 +143,59 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
                               const SizedBox(height: 16),
                               _SubRow(
                                 label: 'Durum',
-                                value: _subData!['status'] == 'active'
-                                    ? 'Aktif'
-                                    : 'İptal Edildi',
-                                valueColor: _subData!['status'] == 'active'
-                                    ? Colors.green
-                                    : Colors.red,
+                                value: 'Aktif',
+                                valueColor: Colors.green,
                               ),
-                              if (_subData!['ends_at'] != null) ...[
+                              const SizedBox(height: 8),
+                              _SubRow(
+                                label: 'Plan',
+                                value: _periodType,
+                              ),
+                              if (_expirationDate != null) ...[
                                 const SizedBox(height: 8),
                                 _SubRow(
-                                  label: 'Bitiş Tarihi',
-                                  value: DateFormat('d MMMM y', 'tr').format(
-                                    (_subData!['ends_at'] as Timestamp).toDate(),
-                                  ),
+                                  label: _willRenew
+                                      ? 'Sonraki Ödeme'
+                                      : 'Bitiş Tarihi',
+                                  value: _expirationDate!,
                                 ),
                               ],
+                              const SizedBox(height: 8),
+                              _SubRow(
+                                label: 'Yenileme',
+                                value: _willRenew ? 'Açık' : 'Kapalı',
+                                valueColor: _willRenew ? Colors.green : Colors.orange,
+                              ),
                             ],
                           ),
                         ),
                         const SizedBox(height: 24),
-                        if (_subData!['status'] == 'active') ...[
-                          SizedBox(
-                            width: double.infinity,
-                            height: 48,
-                            child: OutlinedButton(
-                              onPressed: _cancel,
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: cs.error,
-                                side: BorderSide(
-                                    color: cs.error.withValues(alpha: 0.5)),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 48,
+                          child: OutlinedButton.icon(
+                            onPressed: _manageSubscription,
+                            icon: const Icon(Icons.open_in_new_rounded, size: 18),
+                            label: const Text('Aboneliği Yönet'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: cs.error,
+                              side: BorderSide(
+                                  color: cs.error.withValues(alpha: 0.5)),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
                               ),
-                              child: const Text('Aboneliği İptal Et'),
                             ),
                           ),
-                          const SizedBox(height: 12),
-                          Text(
-                            'İptal etmeniz durumunda aboneliğiniz mevcut dönem sonunda sona erecektir.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: cs.onSurface.withValues(alpha: 0.4),
-                            ),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Aboneliğinizi iptal etmek için App Store\'daki yönetim sayfasına yönlendirileceksiniz.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: cs.onSurface.withValues(alpha: 0.4),
                           ),
-                        ],
+                        ),
                       ],
                     ),
             ),

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:myapp/main.dart';
+import 'package:aerocab/main.dart';
 import 'package:provider/provider.dart' as old_provider;
 
 class AppSettingsScreen extends StatelessWidget {

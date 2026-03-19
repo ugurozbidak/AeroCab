@@ -1,96 +1,180 @@
 import 'dart:developer';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
-class NotificationService {
-  final FirebaseMessaging _firebaseMessaging = FirebaseMessaging.instance;
-  final FlutterLocalNotificationsPlugin _flutterLocalNotificationsPlugin =
-      FlutterLocalNotificationsPlugin();
+// Background mesajları için top-level handler (Flutter zorunluluğu)
+@pragma('vm:entry-point')
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  log('[FCM] Background message: ${message.messageId}', name: 'Notification');
+}
 
-  Future<void> initNotifications(String userId) async {
-    // iOS için bildirim izinlerini isteme
-    await _firebaseMessaging.requestPermission(
+final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+    FlutterLocalNotificationsPlugin();
+
+const AndroidNotificationChannel highImportanceChannel =
+    AndroidNotificationChannel(
+  'high_importance_channel',
+  'Önemli Bildirimler',
+  description: 'Yolculuk durumu bildirimleri.',
+  importance: Importance.max,
+);
+
+class NotificationService {
+  static final NotificationService _instance = NotificationService._internal();
+  factory NotificationService() => _instance;
+  NotificationService._internal();
+
+  final FirebaseMessaging _messaging = FirebaseMessaging.instance;
+
+  // Navigator key — main.dart'tan set edilir
+  static GlobalKey<NavigatorState>? navigatorKey;
+
+  // ── Başlatma ────────────────────────────────────────────────────────────────
+  Future<void> init(String userId) async {
+    // İzin iste
+    final settings = await _messaging.requestPermission(
       alert: true,
-      announcement: false,
       badge: true,
-      carPlay: false,
-      criticalAlert: false,
-      provisional: false,
+      sound: true,
+    );
+    log('[FCM] Permission: ${settings.authorizationStatus}',
+        name: 'Notification');
+
+    // iOS: foreground'da da bildirim göster
+    await _messaging.setForegroundNotificationPresentationOptions(
+      alert: true,
+      badge: true,
       sound: true,
     );
 
-    // Cihazın FCM token'ını al ve veritabanına kaydet
-    // iOS'ta APNS token henüz hazır olmayabilir, hata durumunda atla
-    try {
-      final fcmToken = await _firebaseMessaging.getToken();
-      log('FCM Token: $fcmToken', name: 'NotificationService');
-      if (fcmToken != null) {
-        await _saveTokenToDatabase(userId, fcmToken);
-        // Token yenilendiğinde veritabanını güncelle
-        _firebaseMessaging.onTokenRefresh.listen((newToken) {
-          _saveTokenToDatabase(userId, newToken);
-        });
-      }
-    } catch (e) {
-      log('FCM token alınamadı: $e', name: 'NotificationService');
-    }
+    // Android: bildirim kanalı oluştur
+    await flutterLocalNotificationsPlugin
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(highImportanceChannel);
 
-    // Android için bildirim kanalı oluşturma
-    const AndroidNotificationChannel channel = AndroidNotificationChannel(
-      'high_importance_channel',
-      'High Importance Notifications',
-      description: 'This channel is used for important notifications.',
-      importance: Importance.max,
+    // Local notifications başlat
+    const initSettings = InitializationSettings(
+      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+      iOS: DarwinInitializationSettings(),
+    );
+    await flutterLocalNotificationsPlugin.initialize(
+      settings: initSettings,
+      onDidReceiveNotificationResponse: _onLocalNotificationTap,
     );
 
-    await _flutterLocalNotificationsPlugin
-        .resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin
-        >()
-        ?.createNotificationChannel(channel);
+    // Token al ve kaydet
+    await _refreshAndSaveToken(userId);
 
-    // Uygulama ön plandayken gelen bildirimleri dinleme
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      final notification = message.notification;
-      final android = message.notification?.android;
-
-      if (notification != null && android != null) {
-        // 32-bit sınırları içinde benzersiz bir ID oluşturma
-        final int notificationId = DateTime.now().millisecondsSinceEpoch
-            .remainder(100000);
-
-        _flutterLocalNotificationsPlugin.show(
-          id: notificationId,
-          title: notification.title,
-          body: notification.body,
-          notificationDetails: NotificationDetails(
-            android: AndroidNotificationDetails(
-              channel.id,
-              channel.name,
-              channelDescription: channel.description,
-              icon: '@mipmap/ic_launcher',
-            ),
-          ),
-        );
-      }
+    // Token yenilenirse güncelle
+    _messaging.onTokenRefresh.listen((token) {
+      _saveToken(userId, token);
     });
 
-    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-      log(
-        'A new onMessageOpenedApp event was published!',
-        name: 'NotificationService',
-      );
-    });
+    // Foreground mesaj dinleyici
+    FirebaseMessaging.onMessage.listen(_onForegroundMessage);
+
+    // Bildirime tıklanarak açıldığında (background → foreground)
+    FirebaseMessaging.onMessageOpenedApp.listen(_onNotificationTap);
+
+    // Uygulama kapalıyken bildirime tıklanarak açıldığında
+    final initialMessage = await _messaging.getInitialMessage();
+    if (initialMessage != null) {
+      // Kısa gecikme: widget tree hazır olsun
+      await Future.delayed(const Duration(milliseconds: 500));
+      _onNotificationTap(initialMessage);
+    }
   }
 
-  Future<void> _saveTokenToDatabase(String userId, String token) async {
+  // ── Token yönetimi ──────────────────────────────────────────────────────────
+  Future<void> _refreshAndSaveToken(String userId) async {
     try {
-      await FirebaseFirestore.instance.collection('users').doc(userId).set({
-        'fcmToken': token,
-      }, SetOptions(merge: true));
+      final token = await _messaging.getToken();
+      if (token != null) {
+        await _saveToken(userId, token);
+        log('[FCM] Token kaydedildi', name: 'Notification');
+      }
     } catch (e) {
-      log('Error saving FCM token: $e', name: 'NotificationService');
+      log('[FCM] Token alınamadı: $e', name: 'Notification');
     }
+  }
+
+  Future<void> _saveToken(String userId, String token) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .set({'fcmToken': token}, SetOptions(merge: true));
+    } catch (e) {
+      log('[FCM] Token kaydedilemedi: $e', name: 'Notification');
+    }
+  }
+
+  // Logout: token'ı Firestore'dan ve cihazdan sil
+  Future<void> clearToken(String userId) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .update({'fcmToken': FieldValue.delete()});
+      await _messaging.deleteToken();
+      log('[FCM] Token temizlendi', name: 'Notification');
+    } catch (e) {
+      log('[FCM] Token temizlenemedi: $e', name: 'Notification');
+    }
+  }
+
+  // ── Foreground mesaj ────────────────────────────────────────────────────────
+  void _onForegroundMessage(RemoteMessage message) {
+    final notification = message.notification;
+    if (notification == null) return;
+
+    log('[FCM] Foreground: ${notification.title}', name: 'Notification');
+
+    flutterLocalNotificationsPlugin.show(
+      id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
+      title: notification.title,
+      body: notification.body,
+      notificationDetails: NotificationDetails(
+        android: AndroidNotificationDetails(
+          highImportanceChannel.id,
+          highImportanceChannel.name,
+          channelDescription: highImportanceChannel.description,
+          importance: Importance.max,
+          priority: Priority.high,
+          icon: '@mipmap/ic_launcher',
+        ),
+        iOS: const DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
+        ),
+      ),
+      payload: message.data['screen'],
+    );
+  }
+
+  // ── Bildirime tıklanma (FCM) ────────────────────────────────────────────────
+  void _onNotificationTap(RemoteMessage message) {
+    log('[FCM] Tap: ${message.data}', name: 'Notification');
+    _navigate(message.data['screen']);
+  }
+
+  // ── Bildirime tıklanma (local notification) ─────────────────────────────────
+  void _onLocalNotificationTap(NotificationResponse response) {
+    log('[FCM] Local tap: ${response.payload}', name: 'Notification');
+    _navigate(response.payload);
+  }
+
+  // ── Navigasyon ──────────────────────────────────────────────────────────────
+  void _navigate(String? screen) {
+    final navigator = navigatorKey?.currentState;
+    if (navigator == null) return;
+
+    // Tüm bildirimler home'a yönlendiriyor;
+    // aktif yolculuk stream'i doğru durumu zaten gösteriyor.
+    navigator.pushNamedAndRemoveUntil('/home', (route) => false);
   }
 }

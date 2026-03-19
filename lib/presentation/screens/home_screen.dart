@@ -1,12 +1,12 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:myapp/core/database_service.dart';
-import 'package:myapp/presentation/screens/driver_dashboard_screen.dart';
-import 'package:myapp/presentation/screens/passenger_booking_screen.dart';
-import 'package:myapp/presentation/screens/profile_screen.dart';
-import 'package:myapp/presentation/screens/earnings_screen.dart';
-import 'package:myapp/presentation/screens/ride_history_screen.dart';
+import 'package:aerocab/core/database_service.dart';
+import 'package:aerocab/presentation/screens/driver_dashboard_screen.dart';
+import 'package:aerocab/presentation/screens/passenger_booking_screen.dart';
+import 'package:aerocab/presentation/screens/profile_screen.dart';
+import 'package:aerocab/presentation/screens/earnings_screen.dart';
+import 'package:aerocab/presentation/screens/ride_history_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});

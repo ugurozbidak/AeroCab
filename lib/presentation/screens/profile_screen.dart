@@ -1,16 +1,19 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:myapp/core/database_service.dart';
-import 'package:myapp/features/auth/screens/auth_gate.dart';
-import 'package:myapp/presentation/widgets/rating_dialog.dart';
-import 'package:myapp/presentation/screens/app_settings_screen.dart';
-import 'package:myapp/presentation/screens/contact_screen.dart';
-import 'package:myapp/presentation/screens/edit_profile_screen.dart';
-import 'package:myapp/presentation/screens/legal_screen.dart';
-import 'package:myapp/presentation/screens/ride_history_screen.dart';
-import 'package:myapp/presentation/screens/subscription_screen.dart';
-import 'package:myapp/presentation/screens/user_guide_screen.dart';
+import 'package:aerocab/core/database_service.dart';
+import 'package:aerocab/core/notification_service.dart';
+import 'package:aerocab/core/purchases_service.dart';
+import 'package:aerocab/features/auth/screens/auth_gate.dart';
+import 'package:aerocab/features/auth/services/auth_service.dart';
+import 'package:aerocab/presentation/widgets/rating_dialog.dart';
+import 'package:aerocab/presentation/screens/app_settings_screen.dart';
+import 'package:aerocab/presentation/screens/contact_screen.dart';
+import 'package:aerocab/presentation/screens/edit_profile_screen.dart';
+import 'package:aerocab/presentation/screens/legal_screen.dart';
+import 'package:aerocab/presentation/screens/ride_history_screen.dart';
+import 'package:aerocab/presentation/screens/subscription_screen.dart';
+import 'package:aerocab/presentation/screens/user_guide_screen.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -23,6 +26,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Map<String, dynamic>? _userData;
   bool _loading = true;
   bool _isDriver = false;
+  bool _isPremium = false;
 
   @override
   void initState() {
@@ -39,10 +43,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final db = ref.read(databaseServiceProvider);
     final data = await db.getUserData(user.uid);
     final role = await db.getUserRole(user.uid);
+    final isPremium = await PurchasesService.isPremium();
     if (mounted) {
       setState(() {
         _userData = data;
         _isDriver = role == UserRole.driver;
+        _isPremium = isPremium;
         _loading = false;
       });
     }
@@ -83,6 +89,76 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           (_) => false,
         );
       }
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'requires-recent-login' && mounted) {
+        await _reauthAndDelete(user);
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Hesap silinemedi: ${e.message}')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Hesap silinemedi: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _reauthAndDelete(User user) async {
+    final passwordController = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Kimliğinizi Doğrulayın'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Hesabınızı silmek için şifrenizi girin.',
+              style: TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: passwordController,
+              obscureText: true,
+              decoration: const InputDecoration(
+                labelText: 'Şifre',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('İptal'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text(
+              'Devam Et',
+              style: TextStyle(color: Colors.red),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await ref
+          .read(authServiceProvider)
+          .reauthenticate(passwordController.text);
+      await ref.read(databaseServiceProvider).deleteUserAccount(user.uid);
+      await user.delete();
+      if (mounted) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const AuthGate()),
+          (_) => false,
+        );
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -93,6 +169,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   Future<void> _signOut() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null) {
+      await NotificationService().clearToken(uid);
+      await PurchasesService.logOut();
+    }
     await FirebaseAuth.instance.signOut();
     if (mounted) {
       Navigator.of(context).pushAndRemoveUntil(
@@ -212,6 +293,34 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       ),
                     ),
                   ),
+                  const SizedBox(height: 6),
+                  if (_isPremium)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 4),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFFFFD700), Color(0xFFFFA500)],
+                        ),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.workspace_premium_rounded,
+                              size: 14, color: Colors.white),
+                          SizedBox(width: 4),
+                          Text(
+                            'Premium',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   const SizedBox(height: 8),
                   if (user != null)
                     UserRatingWidget(
@@ -236,6 +345,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 _MenuItem(
                   icon: Icons.subscriptions_outlined,
                   title: 'Aboneliğim',
+                  subtitle: _isPremium ? 'Aktif' : 'Aktif değil',
+                  subtitleColor: _isPremium ? Colors.green : null,
                   onTap: () => _push(const SubscriptionScreen()),
                 ),
               ],
@@ -390,10 +501,14 @@ class _MenuItem extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.onTap,
+    this.subtitle,
+    this.subtitleColor,
   });
   final IconData icon;
   final String title;
   final VoidCallback onTap;
+  final String? subtitle;
+  final Color? subtitleColor;
 
   @override
   Widget build(BuildContext context) {
@@ -402,8 +517,13 @@ class _MenuItem extends StatelessWidget {
       dense: true,
       leading: Icon(icon, color: cs.primary, size: 20),
       title: Text(title,
-          style:
-              const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+      subtitle: subtitle != null
+          ? Text(subtitle!,
+              style: TextStyle(
+                  fontSize: 12,
+                  color: subtitleColor ?? cs.onSurface.withValues(alpha: 0.5)))
+          : null,
       trailing: Icon(Icons.chevron_right_rounded,
           color: cs.onSurface.withValues(alpha: 0.35), size: 20),
       onTap: onTap,

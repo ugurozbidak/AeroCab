@@ -1,0 +1,88 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return request.auth.uid == uid;
+    }
+
+    // ── Users ────────────────────────────────────────────────────────────────
+    match /users/{uid} {
+      // Giriş yapmış herkes profil okuyabilir (aktif yolculukta isim/fotoğraf için)
+      allow read: if isAuth();
+      // Sadece sahibi yazabilir
+      allow create: if isAuth() && isOwner(uid);
+      allow update: if isAuth() && isOwner(uid);
+      allow delete: if isAuth() && isOwner(uid);
+
+      // Abonelikler — sadece kullanıcı kendisi
+      match /subscriptions/{subId} {
+        allow read, write: if isAuth() && isOwner(uid);
+      }
+
+      // Kayıtlı adresler — sadece kullanıcı kendisi
+      match /saved_addresses/{addrId} {
+        allow read, write: if isAuth() && isOwner(uid);
+      }
+    }
+
+    // ── Driver Locations ─────────────────────────────────────────────────────
+    match /driver_locations/{driverId} {
+      // Giriş yapmış herkes haritada sürücüleri görebilir
+      allow read: if isAuth();
+      // Sadece sürücü kendi konumunu yazabilir
+      allow write: if isAuth() && isOwner(driverId);
+    }
+
+    // ── Reservations ─────────────────────────────────────────────────────────
+    match /reservations/{reservationId} {
+      // Yolcu kendi rezervasyonunu görebilir
+      // Sürücü: atanmış olduğu rezervasyonu veya 'created' olanları görebilir
+      allow read: if isAuth() && (
+        request.auth.uid == resource.data.passenger_id ||
+        request.auth.uid == resource.data.driver_id ||
+        resource.data.status == 'created'
+      );
+
+      // Sadece yolcu oluşturabilir — kendi uid'i ve doğru başlangıç durumu ile
+      allow create: if isAuth() &&
+        request.resource.data.passenger_id == request.auth.uid &&
+        request.resource.data.status == 'created' &&
+        request.resource.data.driver_id == null;
+
+      allow update: if isAuth() && (
+        // Yolcu: sürücü atanmamışsa iptal edebilir
+        (request.auth.uid == resource.data.passenger_id &&
+          resource.data.driver_id == null &&
+          request.resource.data.status == 'cancelled') ||
+        // Sürücü: 'created' rezervasyonu kabul edebilir (kendi uid'ini yazar)
+        (resource.data.status == 'created' &&
+          request.resource.data.driver_id == request.auth.uid &&
+          request.resource.data.status == 'accepted') ||
+        // Atanmış sürücü: durum güncelleyebilir
+        request.auth.uid == resource.data.driver_id
+      );
+
+      // Rezervasyon silinemez
+      allow delete: if false;
+    }
+
+    // ── Ratings ──────────────────────────────────────────────────────────────
+    match /ratings/{ratingId} {
+      // Kullanıcı kendi verdiği veya aldığı puanları görebilir
+      allow read: if isAuth() && (
+        request.auth.uid == resource.data.rater_uid ||
+        request.auth.uid == resource.data.rated_uid
+      );
+      // Puanı veren kişi oluşturabilir — kendi uid'i ile
+      allow create: if isAuth() &&
+        request.resource.data.rater_uid == request.auth.uid;
+      // Puan sonradan değiştirilemez veya silinemez
+      allow update, delete: if false;
+    }
+  }
+}

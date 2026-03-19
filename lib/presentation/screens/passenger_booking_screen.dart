@@ -8,12 +8,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
-import 'package:myapp/core/alert_service.dart';
-import 'package:myapp/core/booking_models.dart';
-import 'package:myapp/core/database_service.dart';
-import 'package:myapp/features/subscription/screens/subscription_paywall_screen.dart';
-import 'package:myapp/presentation/screens/map_picker_screen.dart';
-import 'package:myapp/presentation/widgets/rating_dialog.dart';
+import 'package:aerocab/core/alert_service.dart';
+import 'package:aerocab/core/booking_models.dart';
+import 'package:aerocab/core/database_service.dart';
+import 'package:aerocab/features/subscription/screens/subscription_paywall_screen.dart';
+import 'package:aerocab/presentation/screens/map_picker_screen.dart';
+import 'package:aerocab/presentation/widgets/rating_dialog.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 enum _RideState { idle, requested, driverAssigned, headingToPickup, onRoute }

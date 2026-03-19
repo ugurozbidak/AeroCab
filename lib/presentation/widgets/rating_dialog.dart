@@ -1,6 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:myapp/core/database_service.dart';
+import 'package:aerocab/core/database_service.dart';
 
 /// Shows a 5-star rating dialog with preset tag chips.
 /// [ratedByPassenger] = true  → passenger rates driver

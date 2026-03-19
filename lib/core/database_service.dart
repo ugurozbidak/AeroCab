@@ -3,7 +3,9 @@ import 'dart:developer';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:myapp/core/booking_models.dart';
+import 'package:aerocab/core/booking_models.dart';
+import 'package:aerocab/core/purchases_service.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 
 enum UserRole { passenger, driver }
 
@@ -44,31 +46,10 @@ class DatabaseService {
   // Subscription Management
   Future<bool> hasActiveSubscription(String uid) async {
     try {
-      log('[SUB] Checking subscription for uid: $uid');
-      final snapshot = await _firestore
-          .collection('users')
-          .doc(uid)
-          .collection('subscriptions')
-          .where('status', isEqualTo: 'active')
-          .limit(1)
-          .get();
-
-      log('[SUB] Docs found: ${snapshot.docs.length}');
-
-      if (snapshot.docs.isEmpty) return false;
-
-      final data = snapshot.docs.first.data();
-      log('[SUB] Data: $data');
-
-      final endsAt = data['ends_at'] as Timestamp?;
-      if (endsAt == null) {
-        log('[SUB] ends_at is null');
-        return false;
-      }
-
-      final isActive = endsAt.toDate().isAfter(DateTime.now());
-      log('[SUB] ends_at: ${endsAt.toDate()}, isActive: $isActive');
-      return isActive;
+      log('[SUB] Checking entitlement for uid: $uid');
+      final isPremium = await PurchasesService.isPremium();
+      log('[SUB] isPremium: $isPremium');
+      return isPremium;
     } catch (e) {
       log('[SUB] ERROR: $e');
       return false;
@@ -308,6 +289,19 @@ class DatabaseService {
   }
 
   Future<void> deleteUserAccount(String uid) async {
+    // 1. Aktif rezervasyonları iptal et
+    try {
+      final activeRes = await _firestore
+          .collection('reservations')
+          .where('passenger_id', isEqualTo: uid)
+          .where('status', whereIn: ['created', 'accepted', 'heading_to_pickup', 'on_route'])
+          .get();
+      for (final doc in activeRes.docs) {
+        await doc.reference.update({'status': 'cancelled'});
+      }
+    } catch (_) {}
+
+    // 2. Subcollection ve user dokümanını sil
     final addresses = await _firestore
         .collection('users')
         .doc(uid)
@@ -329,8 +323,17 @@ class DatabaseService {
     batch.delete(_firestore.collection('users').doc(uid));
     await batch.commit();
 
+    // 3. Driver location sil
     try {
       await _firestore.collection('driver_locations').doc(uid).delete();
+    } catch (_) {}
+
+    // 4. Profil fotoğrafını Storage'dan sil
+    try {
+      await FirebaseStorage.instance
+          .ref()
+          .child('profile_photos/$uid.jpg')
+          .delete();
     } catch (_) {}
   }
 

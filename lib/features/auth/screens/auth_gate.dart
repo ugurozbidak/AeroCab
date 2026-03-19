@@ -1,9 +1,11 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:myapp/core/notification_service.dart';
-import 'package:myapp/features/auth/screens/login_screen.dart';
-import 'package:myapp/presentation/screens/home_screen.dart';
+import 'package:aerocab/core/notification_service.dart';
+import 'package:aerocab/core/purchases_service.dart';
+import 'package:aerocab/features/auth/screens/email_verification_screen.dart';
+import 'package:aerocab/features/auth/screens/login_screen.dart';
+import 'package:aerocab/presentation/screens/home_screen.dart';
 
 class AuthGate extends ConsumerWidget {
   const AuthGate({super.key});
@@ -23,9 +25,13 @@ class AuthGate extends ConsumerWidget {
           return const LoginScreen();
         }
 
-        NotificationService()
-            .initNotifications(snapshot.data!.uid)
-            .catchError((_) {});
+        if (!snapshot.data!.emailVerified) {
+          return const EmailVerificationScreen();
+        }
+
+        NotificationService().init(snapshot.data!.uid).catchError((_) {});
+
+        PurchasesService.logIn(snapshot.data!.uid).catchError((_) {});
 
         return const HomeScreen();
       },

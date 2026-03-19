@@ -5,7 +5,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:myapp/core/database_service.dart';
+import 'package:aerocab/core/database_service.dart';
 
 class EditProfileScreen extends ConsumerStatefulWidget {
   const EditProfileScreen({
@@ -43,7 +43,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
             FirebaseAuth.instance.currentUser?.email ??
             '');
     _plateCtrl = TextEditingController(
-        text: widget.userData['plateNumber'] as String? ?? '');
+        text: widget.userData['plate'] as String? ?? '');
   }
 
   @override
@@ -121,14 +121,22 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
       data['photoUrl'] = photoUrl;
     }
 
-    await ref.read(databaseServiceProvider).updateUserData(user.uid, data);
-
-    if (mounted) {
-      setState(() => _saving = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Profiliniz güncellendi.')),
-      );
-      Navigator.pop(context, true);
+    try {
+      await ref.read(databaseServiceProvider).updateUserData(user.uid, data);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Profiliniz güncellendi.')),
+        );
+        Navigator.pop(context, true);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Güncelleme başarısız: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 

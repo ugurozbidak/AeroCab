@@ -7,34 +7,15 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:870194509289:android:4db4acd417259b8eecc778",
+        "mobilesdk_app_id": "1:870194509289:android:bbab3b86fe95bde4ecc778",
         "android_client_info": {
-          "package_name": "com.example.aerocab"
+          "package_name": "com.ugurozbidak.aerocab"
         }
       },
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyBgmNiik5lKCsWNPSuRsjhyUI50g-jFBF4"
-        }
-      ],
-      "services": {
-        "appinvite_service": {
-          "other_platform_oauth_client": []
-        }
-      }
-    },
-    {
-      "client_info": {
-        "mobilesdk_app_id": "1:870194509289:android:9e0700fc465d8919ecc778",
-        "android_client_info": {
-          "package_name": "com.example.myapp"
-        }
-      },
-      "oauth_client": [],
-      "api_key": [
-        {
-          "current_key": "AIzaSyBgmNiik5lKCsWNPSuRsjhyUI50g-jFBF4"
+          "current_key": "AIzaSyD_VVPqASSIXe4qqSqTFWyppmjjGw_7nNg"
         }
       ],
       "services": {

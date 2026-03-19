@@ -1,10 +1,9 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:purchases_flutter/purchases_flutter.dart';
+import 'package:aerocab/core/purchases_service.dart';
 
 class SubscriptionPaywallScreen extends StatefulWidget {
   const SubscriptionPaywallScreen({super.key, this.isDriver = false});
-
   final bool isDriver;
 
   @override
@@ -14,40 +13,75 @@ class SubscriptionPaywallScreen extends StatefulWidget {
 
 class _SubscriptionPaywallScreenState
     extends State<SubscriptionPaywallScreen> {
-  bool _isAnnual = true;
+  bool _isAnnual = false;
   bool _isLoading = false;
+  bool _isLoadingOffering = true;
+  Package? _monthlyPackage;
+  Package? _annualPackage;
 
-  // Fiyatlandırma
-  int get _monthlyPrice => widget.isDriver ? 299 : 49;
-  int get _annualPrice => widget.isDriver ? 2990 : 490;
-  int get _annualMonthly => (_annualPrice / 12).round();
-  int get _savedMonths => 2;
+  @override
+  void initState() {
+    super.initState();
+    _loadOffering();
+  }
+
+  Future<void> _loadOffering() async {
+    final offering = await PurchasesService.getOffering(widget.isDriver);
+    if (mounted) {
+      setState(() {
+        _monthlyPackage = offering?.monthly;
+        _annualPackage = offering?.annual;
+        _isLoadingOffering = false;
+      });
+    }
+  }
+
+  String get _monthlyPriceStr =>
+      _monthlyPackage?.storeProduct.priceString ?? '-';
+  String get _annualPriceStr =>
+      _annualPackage?.storeProduct.priceString ?? '-';
+  String get _annualMonthlyStr {
+    final price = _annualPackage?.storeProduct.price;
+    if (price == null) return '-';
+    return '${(price / 12).toStringAsFixed(0)} ₺';
+  }
 
   Future<void> _subscribe() async {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return;
+    final package = _isAnnual ? _annualPackage : _monthlyPackage;
+    if (package == null) return;
     setState(() => _isLoading = true);
+    try {
+      final success = await PurchasesService.purchase(package);
+      if (success && mounted) Navigator.pop(context, true);
+    } on PurchasesError catch (e) {
+      if (mounted && e.code != PurchasesErrorCode.purchaseCancelledError) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Satın alma başarısız: ${e.message}')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Hata: $e')),
+        );
+      }
+    }
+    if (mounted) setState(() => _isLoading = false);
+  }
 
-    final now = DateTime.now();
-    final endsAt = _isAnnual
-        ? now.add(const Duration(days: 7 + 365))
-        : now.add(const Duration(days: 7 + 30));
-
-    await FirebaseFirestore.instance
-        .collection('users')
-        .doc(uid)
-        .collection('subscriptions')
-        .add({
-      'status': 'active',
-      'plan': _isAnnual ? 'annual' : 'monthly',
-      'starts_at': Timestamp.fromDate(now),
-      'ends_at': Timestamp.fromDate(endsAt),
-      'trial_ends_at': Timestamp.fromDate(now.add(const Duration(days: 7))),
-    });
-
+  Future<void> _restore() async {
+    setState(() => _isLoading = true);
+    final success = await PurchasesService.restorePurchases();
     if (mounted) {
       setState(() => _isLoading = false);
-      Navigator.pop(context);
+      if (success) {
+        Navigator.pop(context, true);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Geri yüklenecek aktif abonelik bulunamadı.')),
+        );
+      }
     }
   }
 
@@ -60,172 +94,176 @@ class _SubscriptionPaywallScreenState
       body: SafeArea(
         child: Column(
           children: [
-            // ── Kapat butonu
             Align(
               alignment: Alignment.topRight,
               child: IconButton(
                 icon: Icon(Icons.close_rounded,
                     color: cs.onSurface.withValues(alpha: 0.4)),
-                onPressed: () => Navigator.pop(context),
+                onPressed: () => Navigator.pop(context, false),
               ),
             ),
 
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(28, 0, 28, 28),
-                child: Column(
-                  children: [
-                    // ── İkon + başlık
-                    Container(
-                      width: 80,
-                      height: 80,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [cs.primary, cs.tertiary],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
+            if (_isLoadingOffering)
+              const Expanded(
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(28, 0, 28, 28),
+                  child: Column(
+                    children: [
+                      // İkon + başlık
+                      Container(
+                        width: 80,
+                        height: 80,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [cs.primary, cs.tertiary],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          shape: BoxShape.circle,
                         ),
-                        shape: BoxShape.circle,
+                        child: const Icon(Icons.workspace_premium_rounded,
+                            size: 40, color: Colors.white),
                       ),
-                      child: const Icon(Icons.workspace_premium_rounded,
-                          size: 40, color: Colors.white),
-                    ),
-                    const SizedBox(height: 20),
-                    Text(
-                      'AeroCab Premium',
-                      style: TextStyle(
-                        fontSize: 26,
-                        fontWeight: FontWeight.bold,
-                        color: cs.onSurface,
+                      const SizedBox(height: 20),
+                      Text(
+                        'AeroCab Premium',
+                        style: TextStyle(
+                          fontSize: 26,
+                          fontWeight: FontWeight.bold,
+                          color: cs.onSurface,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      widget.isDriver
-                          ? 'Çevrimiçi ol ve yolculuk talepleri al'
-                          : 'Hızlı ve güvenli yolculuk talep et',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: cs.onSurface.withValues(alpha: 0.55),
+                      const SizedBox(height: 8),
+                      Text(
+                        widget.isDriver
+                            ? 'Çevrimiçi ol ve yolculuk talepleri al'
+                            : 'Hızlı ve güvenli yolculuk talep et',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: cs.onSurface.withValues(alpha: 0.55),
+                        ),
+                        textAlign: TextAlign.center,
                       ),
-                      textAlign: TextAlign.center,
-                    ),
 
-                    const SizedBox(height: 24),
+                      const SizedBox(height: 24),
 
-                    // ── 7 gün ücretsiz banner
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(
-                          vertical: 12, horizontal: 20),
-                      decoration: BoxDecoration(
-                        color: Colors.green.shade50,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: Colors.green.shade200),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.celebration_rounded,
-                              color: Colors.green.shade600, size: 20),
-                          const SizedBox(width: 8),
-                          Text(
-                            '7 gün ücretsiz dene, beğenmezsen iptal et',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 13,
-                              color: Colors.green.shade700,
+                      // 7 gün ücretsiz banner
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                            vertical: 12, horizontal: 20),
+                        decoration: BoxDecoration(
+                          color: Colors.green.shade50,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: Colors.green.shade200),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.celebration_rounded,
+                                color: Colors.green.shade600, size: 20),
+                            const SizedBox(width: 8),
+                            Text(
+                              '7 gün ücretsiz dene, beğenmezsen iptal et',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                                color: Colors.green.shade700,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
 
-                    const SizedBox(height: 24),
+                      const SizedBox(height: 24),
 
-                    // ── Aylık / Yıllık toggle
-                    Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: BoxDecoration(
-                        color: cs.surfaceContainerHighest
-                            .withValues(alpha: 0.5),
-                        borderRadius: BorderRadius.circular(14),
+                      // Aylık / Yıllık toggle
+                      Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: cs.surfaceContainerHighest
+                              .withValues(alpha: 0.5),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Row(
+                          children: [
+                            _PlanTab(
+                              label: 'Aylık',
+                              selected: !_isAnnual,
+                              onTap: () => setState(() => _isAnnual = false),
+                            ),
+                            _PlanTab(
+                              label: 'Yıllık',
+                              badge: '2 ay ücretsiz',
+                              selected: _isAnnual,
+                              onTap: () => setState(() => _isAnnual = true),
+                            ),
+                          ],
+                        ),
                       ),
-                      child: Row(
-                        children: [
-                          _PlanTab(
-                            label: 'Aylık',
-                            selected: !_isAnnual,
-                            onTap: () => setState(() => _isAnnual = false),
-                          ),
-                          _PlanTab(
-                            label: 'Yıllık',
-                            badge: '$_savedMonths ay ücretsiz',
-                            selected: _isAnnual,
-                            onTap: () => setState(() => _isAnnual = true),
-                          ),
-                        ],
+
+                      const SizedBox(height: 20),
+
+                      // Fiyat kartı
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 250),
+                        child: _PriceCard(
+                          key: ValueKey(_isAnnual),
+                          isAnnual: _isAnnual,
+                          monthlyPriceStr: _monthlyPriceStr,
+                          annualPriceStr: _annualPriceStr,
+                          annualMonthlyStr: _annualMonthlyStr,
+                        ),
                       ),
-                    ),
 
-                    const SizedBox(height: 20),
+                      const SizedBox(height: 24),
 
-                    // ── Fiyat kartı
-                    AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 250),
-                      child: _PriceCard(
-                        key: ValueKey(_isAnnual),
-                        isAnnual: _isAnnual,
-                        monthlyPrice: _monthlyPrice,
-                        annualPrice: _annualPrice,
-                        annualMonthly: _annualMonthly,
-                      ),
-                    ),
-
-                    const SizedBox(height: 24),
-
-                    // ── Özellikler
-                    _FeatureRow(
-                      icon: Icons.lock_clock_outlined,
-                      text: '7 gün ücretsiz deneme süresi',
-                      highlight: true,
-                    ),
-                    const SizedBox(height: 12),
-                    if (widget.isDriver) ...[
+                      // Özellikler
                       _FeatureRow(
-                          icon: Icons.wifi_rounded,
-                          text: 'Çevrimiçi ol, yolculuk talebi al'),
+                        icon: Icons.lock_clock_outlined,
+                        text: '7 gün ücretsiz deneme süresi',
+                        highlight: true,
+                      ),
+                      const SizedBox(height: 12),
+                      if (widget.isDriver) ...[
+                        _FeatureRow(
+                            icon: Icons.wifi_rounded,
+                            text: 'Çevrimiçi ol, yolculuk talebi al'),
+                        const SizedBox(height: 12),
+                        _FeatureRow(
+                            icon: Icons.bar_chart_rounded,
+                            text: 'Kazanç takibi ve raporlar'),
+                        const SizedBox(height: 12),
+                        _FeatureRow(
+                            icon: Icons.star_rounded,
+                            text: 'Yolcu puanlama sistemi'),
+                      ] else ...[
+                        _FeatureRow(
+                            icon: Icons.local_taxi_rounded,
+                            text: 'Yolculuk talep et'),
+                        const SizedBox(height: 12),
+                        _FeatureRow(
+                            icon: Icons.map_rounded,
+                            text: 'Gerçek zamanlı sürücü takibi'),
+                        const SizedBox(height: 12),
+                        _FeatureRow(
+                            icon: Icons.star_rounded,
+                            text: 'Sürücü puanlama sistemi'),
+                      ],
                       const SizedBox(height: 12),
                       _FeatureRow(
-                          icon: Icons.bar_chart_rounded,
-                          text: 'Kazanç takibi ve raporlar'),
-                      const SizedBox(height: 12),
-                      _FeatureRow(
-                          icon: Icons.star_rounded,
-                          text: 'Yolcu puanlama sistemi'),
-                    ] else ...[
-                      _FeatureRow(
-                          icon: Icons.local_taxi_rounded,
-                          text: 'Yolculuk talep et'),
-                      const SizedBox(height: 12),
-                      _FeatureRow(
-                          icon: Icons.map_rounded,
-                          text: 'Gerçek zamanlı sürücü takibi'),
-                      const SizedBox(height: 12),
-                      _FeatureRow(
-                          icon: Icons.star_rounded,
-                          text: 'Sürücü puanlama sistemi'),
+                          icon: Icons.cancel_outlined,
+                          text: 'İstediğin zaman iptal et'),
                     ],
-                    const SizedBox(height: 12),
-                    _FeatureRow(
-                        icon: Icons.cancel_outlined,
-                        text: 'İstediğin zaman iptal et'),
-                  ],
+                  ),
                 ),
               ),
-            ),
 
-            // ── Alt buton
+            // Alt butonlar
             Padding(
               padding: const EdgeInsets.fromLTRB(28, 0, 28, 20),
               child: Column(
@@ -234,7 +272,12 @@ class _SubscriptionPaywallScreenState
                     width: double.infinity,
                     height: 54,
                     child: ElevatedButton(
-                      onPressed: _isLoading ? null : _subscribe,
+                      onPressed: (_isLoading ||
+                              (_isAnnual
+                                  ? _annualPackage == null
+                                  : _monthlyPackage == null))
+                          ? null
+                          : _subscribe,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: cs.primary,
                         foregroundColor: Colors.white,
@@ -249,9 +292,9 @@ class _SubscriptionPaywallScreenState
                               child: CircularProgressIndicator(
                                   strokeWidth: 2, color: Colors.white),
                             )
-                          : Text(
+                          : const Text(
                               '7 Gün Ücretsiz Başla',
-                              style: const TextStyle(
+                              style: TextStyle(
                                   fontSize: 16, fontWeight: FontWeight.bold),
                             ),
                     ),
@@ -259,13 +302,24 @@ class _SubscriptionPaywallScreenState
                   const SizedBox(height: 10),
                   Text(
                     _isAnnual
-                        ? 'Deneme bittikten sonra yıllık $_annualPrice ₺ ücretlendirilirsiniz.'
-                        : 'Deneme bittikten sonra aylık $_monthlyPrice ₺ ücretlendirilirsiniz.',
+                        ? 'Deneme bittikten sonra $_annualPriceStr olarak faturalandırılırsınız.'
+                        : 'Deneme bittikten sonra $_monthlyPriceStr / ay olarak faturalandırılırsınız.',
                     style: TextStyle(
                       fontSize: 11,
                       color: cs.onSurface.withValues(alpha: 0.4),
                     ),
                     textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                  TextButton(
+                    onPressed: _isLoading ? null : _restore,
+                    child: Text(
+                      'Satın alımları geri yükle',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: cs.onSurface.withValues(alpha: 0.5),
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -333,9 +387,8 @@ class _PlanTab extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w600,
-                      color: selected
-                          ? Colors.white
-                          : Colors.green.shade700,
+                      color:
+                          selected ? Colors.white : Colors.green.shade700,
                     ),
                   ),
                 ),
@@ -353,15 +406,15 @@ class _PriceCard extends StatelessWidget {
   const _PriceCard({
     super.key,
     required this.isAnnual,
-    required this.monthlyPrice,
-    required this.annualPrice,
-    required this.annualMonthly,
+    required this.monthlyPriceStr,
+    required this.annualPriceStr,
+    required this.annualMonthlyStr,
   });
 
   final bool isAnnual;
-  final int monthlyPrice;
-  final int annualPrice;
-  final int annualMonthly;
+  final String monthlyPriceStr;
+  final String annualPriceStr;
+  final String annualMonthlyStr;
 
   @override
   Widget build(BuildContext context) {
@@ -382,7 +435,7 @@ class _PriceCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
-                      '$annualMonthly ₺',
+                      annualMonthlyStr,
                       style: TextStyle(
                         fontSize: 36,
                         fontWeight: FontWeight.bold,
@@ -403,27 +456,10 @@ class _PriceCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Yıllık $annualPrice ₺ olarak faturalandırılır',
+                  'Yıllık $annualPriceStr olarak faturalandırılır',
                   style: TextStyle(
                     fontSize: 13,
                     color: cs.onSurface.withValues(alpha: 0.55),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.green.shade600,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    '${monthlyPrice * 12 - annualPrice} ₺ tasarruf et',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                    ),
                   ),
                 ),
               ],
@@ -432,7 +468,7 @@ class _PriceCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
-                  '$monthlyPrice ₺',
+                  monthlyPriceStr,
                   style: TextStyle(
                     fontSize: 36,
                     fontWeight: FontWeight.bold,

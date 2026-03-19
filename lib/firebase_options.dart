@@ -47,7 +47,7 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyBGZiaa0KqDgHyLk89abFQCgh4oUBqvJzc',
+    apiKey: 'AIzaSyDGSWtW_qdYYBhpJxhaWpIfckaODout-tE',
     appId: '1:870194509289:web:6842ed3a17769eb6ecc778',
     messagingSenderId: '870194509289',
     projectId: 'aerocab-5d474',
@@ -57,19 +57,20 @@ class DefaultFirebaseOptions {
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyBgmNiik5lKCsWNPSuRsjhyUI50g-jFBF4',
-    appId: '1:870194509289:android:9e0700fc465d8919ecc778',
+    apiKey: 'AIzaSyD_VVPqASSIXe4qqSqTFWyppmjjGw_7nNg',
+    appId: '1:870194509289:android:bbab3b86fe95bde4ecc778',
     messagingSenderId: '870194509289',
     projectId: 'aerocab-5d474',
     storageBucket: 'aerocab-5d474.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyAf86rMa-y1gz-m60jg11GKl3RUEaGmzFE',
-    appId: '1:870194509289:ios:9e7b43e5fc1e2d18ecc778',
+    apiKey: 'AIzaSyA7rM5sPtC3abzqE-yDn_I8AqXVDq5wP-U',
+    appId: '1:870194509289:ios:8f49a82921054618ecc778',
     messagingSenderId: '870194509289',
     projectId: 'aerocab-5d474',
     storageBucket: 'aerocab-5d474.firebasestorage.app',
-    iosBundleId: 'com.ugurozbidak.aerocabapp',
+    iosBundleId: 'com.ugurozbidak.aerocab',
   );
+
 }

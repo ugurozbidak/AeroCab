@@ -3,8 +3,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:myapp/core/database_service.dart';
-import 'package:myapp/presentation/widgets/rating_dialog.dart';
+import 'package:aerocab/core/database_service.dart';
+import 'package:aerocab/presentation/widgets/rating_dialog.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class RideHistoryScreen extends ConsumerWidget {
@@ -52,14 +52,18 @@ class RideHistoryScreen extends ConsumerWidget {
                     final formattedDate =
                         DateFormat.yMMMd('tr').add_jm().format(createdAt);
 
-                    final pickupGeo = ride['pickup_location'] as GeoPoint;
+                    final pickupGeo = ride['pickup_location'] as GeoPoint?;
                     final destGeo =
-                        ride['destination_location'] as GeoPoint;
+                        ride['destination_location'] as GeoPoint?;
                     final pickupStr = ride['pickup_address'] as String? ??
-                        '${pickupGeo.latitude.toStringAsFixed(4)}, ${pickupGeo.longitude.toStringAsFixed(4)}';
+                        (pickupGeo != null
+                            ? '${pickupGeo.latitude.toStringAsFixed(4)}, ${pickupGeo.longitude.toStringAsFixed(4)}'
+                            : '—');
                     final destStr =
                         ride['destination_address'] as String? ??
-                            '${destGeo.latitude.toStringAsFixed(4)}, ${destGeo.longitude.toStringAsFixed(4)}';
+                            (destGeo != null
+                                ? '${destGeo.latitude.toStringAsFixed(4)}, ${destGeo.longitude.toStringAsFixed(4)}'
+                                : '—');
                     final price = ride['price'] as num?;
                     final cs = Theme.of(context).colorScheme;
 

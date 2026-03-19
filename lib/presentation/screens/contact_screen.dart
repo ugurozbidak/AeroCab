@@ -52,22 +52,22 @@ class ContactScreen extends StatelessWidget {
             _ContactTile(
               icon: Icons.email_outlined,
               title: 'E-posta',
-              subtitle: 'destek@aerocab.com',
-              onTap: () => _launch('mailto:destek@aerocab.com'),
+              subtitle: 'aerocabapp@gmail.com',
+              onTap: () => _launch('mailto:aerocabapp@gmail.com'),
             ),
             const SizedBox(height: 12),
             _ContactTile(
               icon: Icons.phone_outlined,
               title: 'Telefon',
-              subtitle: '+90 (212) 000 00 00',
-              onTap: () => _launch('tel:+902120000000'),
+              subtitle: '+90 530 353 07 72',
+              onTap: () => _launch('tel:+905303530772'),
             ),
             const SizedBox(height: 12),
             _ContactTile(
               icon: Icons.chat_bubble_outline_rounded,
               title: 'WhatsApp',
-              subtitle: 'Destek hattı',
-              onTap: () => _launch('https://wa.me/902120000000'),
+              subtitle: '+90 530 353 07 72',
+              onTap: () => _launch('https://wa.me/905303530772'),
             ),
             const SizedBox(height: 12),
             _ContactTile(

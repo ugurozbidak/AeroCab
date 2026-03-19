@@ -2,10 +2,10 @@ import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:myapp/core/database_service.dart';
-import 'package:myapp/features/auth/screens/auth_gate.dart';
-import 'package:myapp/features/subscription/screens/subscription_paywall_screen.dart';
-import 'package:myapp/presentation/screens/home_screen.dart';
+import 'package:aerocab/core/database_service.dart';
+import 'package:aerocab/features/auth/screens/auth_gate.dart';
+import 'package:aerocab/features/subscription/screens/subscription_paywall_screen.dart';
+import 'package:aerocab/presentation/screens/home_screen.dart';
 
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
