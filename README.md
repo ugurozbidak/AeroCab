@@ -5,7 +5,7 @@ THY personeline özel havalimanı transfer uygulaması. Yolcular yolculuk talep 
 ## Özellikler
 
 **Yolcu**
-- @thy.com e-posta adresiyle kayıt
+- `@thy.com` e-posta adresiyle kayıt ve e-posta doğrulama
 - Haritadan alınış ve varış noktası seçimi
 - 15 dakikalık zaman dilimleriyle yolculuk planlaması (en az 90 dakika öncesinden)
 - Aktif yolculuk takibi ve araç animasyonu
@@ -13,28 +13,44 @@ THY personeline özel havalimanı transfer uygulaması. Yolcular yolculuk talep 
 - Kayıtlı adres yönetimi
 
 **Sürücü**
-- Çevrimiçi/çevrimdışı modu
+- Çevrimiçi / çevrimdışı modu
 - Yeni taleplerde tam ekran sesli ve titreşimli uyarı
 - Basılı tut ile talep kabul (1 saniye)
-- Yolculuk durum yönetimi (yola çıktım, alındı, tamamlandı)
+- Yolculuk durum yönetimi (yola çıktım → alındı → tamamlandı)
 - Kazanç takibi
 - Yolcu puanlama sistemi
 
-**Genel**
-- Firebase Auth ile e-posta/şifre girişi
-- 7 günlük ücretsiz deneme aboneliği
-- Aylık ve yıllık abonelik seçenekleri (sürücü / yolcu)
+**Abonelik & Bildirimler**
+- RevenueCat entegrasyonu (App Store üzerinden gerçek ödeme)
+- 7 günlük ücretsiz deneme, aylık ve yıllık plan seçenekleri (sürücü / yolcu)
+- Firebase Cloud Functions ile push bildirim zinciri:
+  - Yeni rezervasyonda tüm çevrimiçi sürücülere bildirim
+  - Kabul, yola çıkma, yolculuk başlangıcı ve tamamlanma bildirimleri
+  - İptal durumunda sürücü ve yolcuya ayrı bildirimler
 
 ## Teknolojiler
 
-- Flutter / Dart
-- Firebase Auth, Firestore, Storage, Cloud Functions
-- Google Maps Flutter
-- OpenStreetMap Nominatim (adres arama ve ters geocoding)
-- Flutter Riverpod
-- Flutter Local Notifications
+| Katman | Teknoloji |
+|--------|-----------|
+| Mobil | Flutter / Dart |
+| Auth | Firebase Auth (e-posta + şifre, e-posta doğrulama) |
+| Veritabanı | Cloud Firestore |
+| Depolama | Firebase Storage |
+| Backend | Firebase Cloud Functions (Node.js, europe-west1) |
+| Harita | Google Maps Flutter |
+| Adres | OpenStreetMap Nominatim |
+| Durum Yönetimi | Flutter Riverpod |
+| Bildirimler | Firebase Cloud Messaging + Flutter Local Notifications |
+| Abonelik | RevenueCat (`purchases_flutter`) |
 
 ## Kurulum
+
+### Gereksinimler
+- Flutter 3.x
+- Firebase CLI (`npm install -g firebase-tools`)
+- Node.js 18+
+
+### Adımlar
 
 1. Repoyu klonla:
    ```bash
@@ -48,21 +64,39 @@ THY personeline özel havalimanı transfer uygulaması. Yolcular yolculuk talep 
    ```
 
 3. Firebase yapılandırması:
-   - `google-services.json` dosyasını `android/app/` altına ekle
-   - `GoogleService-Info.plist` dosyasını `ios/Runner/` altına ekle
+   - `google-services.json` → `android/app/`
+   - `GoogleService-Info.plist` → `ios/Runner/`
 
-4. Uygulamayı çalıştır:
+4. Cloud Functions'ı deploy et:
+   ```bash
+   cd functions
+   npm install
+   cd ..
+   firebase deploy --only functions
+   ```
+
+5. Firestore kural ve indexlerini deploy et:
+   ```bash
+   firebase deploy --only firestore:rules,firestore:indexes,storage
+   ```
+
+6. Uygulamayı çalıştır:
    ```bash
    flutter run
    ```
 
-## Abonelik
-
-Abonelik sistemi şu an Firestore üzerinden test edilmektedir. App Store Connect entegrasyonu tamamlandığında RevenueCat ile gerçek ödeme akışına geçilecektir.
+## Abonelik Planları
 
 | Plan | Aylık | Yıllık |
 |------|-------|--------|
-| Yolcu | 49 ₺ | 490 ₺ |
-| Sürücü | 299 ₺ | 2.990 ₺ |
+| Yolcu | 299,99 ₺ | — |
+| Sürücü | 299,99 ₺ | — |
 
-Yıllık planda 2 ay ücretsiz, tüm planlarda 7 gün ücretsiz deneme.
+- Tüm planlarda **7 gün ücretsiz** deneme
+- Yıllık planda **2 ay ücretsiz** (yapılandırıldığında)
+- Abonelik App Store üzerinden yönetilir
+
+## İletişim
+
+**Destek:** aerocabapp@gmail.com
+**Telefon / WhatsApp:** +90 530 353 07 72
