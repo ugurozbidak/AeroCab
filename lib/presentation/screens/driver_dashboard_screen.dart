@@ -34,6 +34,7 @@ class _DriverDashboardScreenState
 
   List<QueryDocumentSnapshot> _availableRides = [];
   String? _reservationId;
+  String? _alertRideId; // Şu an alert ekranında gösterilen ride ID'si
   DocumentSnapshot? _reservationData;
   LatLng? _myLocation;
   String? _passengerId;
@@ -181,12 +182,22 @@ class _DriverDashboardScreenState
         .listen((snap) {
           if (!mounted || _rideState != _DriverRideState.idle) return;
           final rides = snap.docs;
+
+          // Alert ekranında gösterilen ride iptal/alındıysa ekranı kapat
+          if (_alertRideId != null) {
+            final stillExists = rides.any((r) => r.id == _alertRideId);
+            if (!stillExists) {
+              _alertRideId = null;
+              Navigator.of(context).pop(false);
+            }
+          }
+
           final wasEmpty = _prevRidesEmpty;
           _prevRidesEmpty = rides.isEmpty;
           setState(() => _availableRides = rides);
 
           // New ride alert: transition from empty to non-empty
-          if (wasEmpty && rides.isNotEmpty) {
+          if (wasEmpty && rides.isNotEmpty && _alertRideId == null) {
             _showNewRideAlert(rides.first);
           }
         });
@@ -214,6 +225,8 @@ class _DriverDashboardScreenState
             1000
         : null;
 
+    _alertRideId = ride.id;
+
     Navigator.push<bool>(
       context,
       MaterialPageRoute(
@@ -229,6 +242,7 @@ class _DriverDashboardScreenState
         ),
       ),
     ).then((accepted) {
+      _alertRideId = null;
       if (accepted == true && mounted) _acceptRide(ride);
     });
   }
