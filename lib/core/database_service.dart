@@ -146,7 +146,6 @@ class DatabaseService {
     return _firestore
         .collection('reservations')
         .where('status', isEqualTo: 'created')
-        .where('current_offer_driver', isEqualTo: driverId)
         .snapshots();
   }
 

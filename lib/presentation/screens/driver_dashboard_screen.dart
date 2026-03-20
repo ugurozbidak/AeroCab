@@ -258,7 +258,14 @@ class _DriverDashboardScreenState
         .getCreatedReservationsStream(user.uid)
         .listen((snap) {
           if (!mounted || _rideState != _DriverRideState.idle) return;
-          final rides = snap.docs;
+
+          // Sadece bu sürücüye teklif edilen rezervasyonları göster
+          final rides = snap.docs.where((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            final offerDriver = data['current_offer_driver'] as String?;
+            // current_offer_driver yoksa (eski sistem) veya bu sürücüye aitse göster
+            return offerDriver == null || offerDriver == user.uid;
+          }).toList();
 
           // Alert ekranında gösterilen ride iptal/alındıysa ekranı kapat
           if (_alertRideId != null) {
