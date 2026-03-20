@@ -149,6 +149,14 @@ class DatabaseService {
         .snapshots();
   }
 
+  Future<void> driverCancelReservation(String reservationId) async {
+    await _firestore.collection('reservations').doc(reservationId).update({
+      'status': 'created',
+      'driver_id': null,
+      'current_offer_driver': null,
+    });
+  }
+
   Future<bool> acceptReservation(String reservationId, String driverId) async {
     final reservationRef = _firestore
         .collection('reservations')

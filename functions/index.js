@@ -208,6 +208,32 @@ exports.onReservationStatusChanged = functions
 
       const baseData = { reservationId, screen: "home" };
 
+      // ── accepted → created: Sürücü kabul edip iptal etti ──────────────────
+      if (oldStatus === "accepted" && newStatus === "created") {
+        const driverQueue = newData.driver_queue || [];
+        const currentIndex = newData.offer_index || 0;
+        const nextIndex = currentIndex + 1;
+
+        // Yolcuya bildir
+        await sendNotification(
+            passengerId,
+            "Sürücünüz İptal Etti",
+            "Başka bir sürücü aranıyor, lütfen bekleyin.",
+            baseData,
+        );
+
+        if (nextIndex < driverQueue.length) {
+          const nextDriverId = driverQueue[nextIndex];
+          const pickupAddress = newData.pickup_address || "Belirtilmemiş";
+          const dropoffAddress = newData.dropoff_address || "Belirtilmemiş";
+
+          await change.after.ref.update({ offer_index: nextIndex });
+          await offerRideToDriver(reservationId, nextDriverId, pickupAddress, dropoffAddress);
+          await scheduleOfferExpiry(reservationId);
+        }
+        return null;
+      }
+
       // ── created → accepted: Sürücü kabul etti ──────────────────────────────
       if (oldStatus === "created" && newStatus === "accepted") {
         await sendNotification(

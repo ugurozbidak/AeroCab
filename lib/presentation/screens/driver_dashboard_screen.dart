@@ -36,6 +36,7 @@ class _DriverDashboardScreenState
   List<QueryDocumentSnapshot> _availableRides = [];
   String? _reservationId;
   String? _alertRideId; // Şu an alert ekranında gösterilen ride ID'si
+  final Set<String> _declinedRideIds = {}; // Reddedilen/süresi dolan talepler
   DocumentSnapshot? _reservationData;
   LatLng? _myLocation;
   String? _passengerId;
@@ -259,11 +260,11 @@ class _DriverDashboardScreenState
         .listen((snap) {
           if (!mounted || _rideState != _DriverRideState.idle) return;
 
-          // Sadece bu sürücüye teklif edilen rezervasyonları göster
+          // Sadece bu sürücüye teklif edilen, reddedilmemiş rezervasyonları göster
           final rides = snap.docs.where((doc) {
+            if (_declinedRideIds.contains(doc.id)) return false;
             final data = doc.data() as Map<String, dynamic>;
             final offerDriver = data['current_offer_driver'] as String?;
-            // current_offer_driver yoksa (eski sistem) veya bu sürücüye aitse göster
             return offerDriver == null || offerDriver == user.uid;
           }).toList();
 
@@ -326,6 +327,9 @@ class _DriverDashboardScreenState
         ),
       ),
     ).then((accepted) {
+      if (accepted != true && _alertRideId != null) {
+        _declinedRideIds.add(_alertRideId!);
+      }
       _alertRideId = null;
       if (accepted == true && mounted) _acceptRide(ride);
     });
@@ -421,6 +425,42 @@ class _DriverDashboardScreenState
         _passengerPhone = null;
       });
       if (_isOnline) _listenToRides();
+    }
+  }
+
+  Future<void> _cancelAcceptedRide() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Yolculuğu İptal Et'),
+        content: const Text(
+          'Yolculuğu iptal etmek istediğinizden emin misiniz? Talep diğer sürücülere aktarılacaktır.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Vazgeç'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('İptal Et',
+                style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await ref
+          .read(databaseServiceProvider)
+          .driverCancelReservation(_reservationId!);
+      _resetRide();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('İptal başarısız: $e')),
+        );
+      }
     }
   }
 
@@ -635,6 +675,21 @@ class _DriverDashboardScreenState
                   ),
                 ),
                 const SizedBox(height: 8),
+                if (_rideState == _DriverRideState.assigned)
+                  Center(
+                    child: TextButton(
+                      onPressed: _cancelAcceptedRide,
+                      child: Text(
+                        'Yolculuğu İptal Et',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: cs.error.withValues(alpha: 0.7),
+                          decoration: TextDecoration.underline,
+                          decorationColor: cs.error.withValues(alpha: 0.4),
+                        ),
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),

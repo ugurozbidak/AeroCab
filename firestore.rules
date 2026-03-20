@@ -64,7 +64,11 @@ service cloud.firestore {
           request.resource.data.driver_id == request.auth.uid &&
           request.resource.data.status == 'accepted') ||
         // Atanmış sürücü: durum güncelleyebilir
-        request.auth.uid == resource.data.driver_id
+        request.auth.uid == resource.data.driver_id ||
+        // Atanmış sürücü: kabul ettiği yolculuğu iptal edebilir (created'a döner)
+        (request.auth.uid == resource.data.driver_id &&
+          resource.data.status == 'accepted' &&
+          request.resource.data.status == 'created')
       );
 
       // Rezervasyon silinemez
