@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:audioplayers/audioplayers.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -45,6 +46,80 @@ class _DriverDashboardScreenState
   void initState() {
     super.initState();
     _checkActiveReservation();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkNotificationArgs());
+  }
+
+  void _checkNotificationArgs() {
+    final args = ModalRoute.of(context)?.settings.arguments;
+    if (args is Map && args['reservationId'] != null) {
+      _openRideAlertFromNotification(args['reservationId'] as String);
+    }
+  }
+
+  Future<void> _openRideAlertFromNotification(String reservationId) async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('reservations')
+          .doc(reservationId)
+          .get();
+      if (!doc.exists || !mounted) return;
+      final data = doc.data() as Map<String, dynamic>;
+      if (data['status'] != 'created') return;
+
+      final pickup = data['pickup_location'] as GeoPoint;
+      final pickupAddr = data['pickup_address'] as String? ??
+          '${pickup.latitude.toStringAsFixed(4)}, ${pickup.longitude.toStringAsFixed(4)}';
+      final destAddr = data['destination_address'] as String? ?? '';
+      final price = data['price'] as num?;
+      final passengerId = data['passenger_id'] as String?;
+      final scheduledTs = data['scheduled_time'] as Timestamp?;
+      final distance = _myLocation != null
+          ? Geolocator.distanceBetween(_myLocation!.latitude, _myLocation!.longitude,
+                  pickup.latitude, pickup.longitude) /
+              1000
+          : null;
+
+      if (!mounted) return;
+      _alertRideId = reservationId;
+      final accepted = await Navigator.push<bool>(
+        context,
+        MaterialPageRoute(
+          fullscreenDialog: true,
+          builder: (_) => _RideAlertScreen(
+            pickupAddr: pickupAddr,
+            destAddr: destAddr,
+            price: price,
+            distance: distance,
+            passengerId: passengerId,
+            scheduledTime: scheduledTs?.toDate(),
+            dbService: ref.read(databaseServiceProvider),
+          ),
+        ),
+      );
+      _alertRideId = null;
+      if (accepted == true && mounted) {
+        final user = FirebaseAuth.instance.currentUser;
+        if (user == null) return;
+        final success = await ref
+            .read(databaseServiceProvider)
+            .acceptReservation(reservationId, user.uid);
+        if (!mounted) return;
+        if (success) {
+          _ridesSub?.cancel();
+          setState(() {
+            _reservationId = reservationId;
+            _rideState = _DriverRideState.assigned;
+            _availableRides = [];
+          });
+          if (passengerId != null) await _fetchPassengerInfo(passengerId);
+          _listenToReservation(reservationId);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Bu yolculuk zaten alındı.')),
+          );
+        }
+      }
+    } catch (_) {}
   }
 
   @override
@@ -977,6 +1052,7 @@ class _RideAlertScreenState extends State<_RideAlertScreen>
   late final AnimationController _pulseCtrl;
   late final AnimationController _ringCtrl;
   Timer? _hapticTimer;
+  final AudioPlayer _audioPlayer = AudioPlayer();
 
   @override
   void initState() {
@@ -992,11 +1068,15 @@ class _RideAlertScreenState extends State<_RideAlertScreen>
     )..repeat();
 
     HapticFeedback.heavyImpact();
-    SystemSound.play(SystemSoundType.alert);
     _hapticTimer = Timer.periodic(const Duration(milliseconds: 1500), (_) {
       HapticFeedback.heavyImpact();
-      SystemSound.play(SystemSoundType.alert);
     });
+    _playAlert();
+  }
+
+  Future<void> _playAlert() async {
+    await _audioPlayer.setReleaseMode(ReleaseMode.loop);
+    await _audioPlayer.play(AssetSource('sounds/ride_alert.mp3'));
   }
 
   @override
@@ -1004,6 +1084,8 @@ class _RideAlertScreenState extends State<_RideAlertScreen>
     _pulseCtrl.dispose();
     _ringCtrl.dispose();
     _hapticTimer?.cancel();
+    _audioPlayer.stop();
+    _audioPlayer.dispose();
     super.dispose();
   }
 

@@ -23,7 +23,7 @@ async function sendNotification(userId, title, body, data = {}) {
         },
         payload: {
           aps: {
-            sound: "default",
+            sound: "ride_alert.caf",
             badge: 1,
             "content-available": 1,
           },

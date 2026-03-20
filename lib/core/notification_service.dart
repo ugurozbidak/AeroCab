@@ -92,11 +92,16 @@ class NotificationService {
   Future<void> _refreshAndSaveToken(String userId) async {
     try {
       final token = await _messaging.getToken();
+      debugPrint('[FCM_DEBUG] getToken result: $token');
       if (token != null) {
         await _saveToken(userId, token);
+        debugPrint('[FCM_DEBUG] Token saved successfully');
         log('[FCM] Token kaydedildi', name: 'Notification');
+      } else {
+        debugPrint('[FCM_DEBUG] Token is NULL');
       }
     } catch (e) {
+      debugPrint('[FCM_DEBUG] getToken error: $e');
       log('[FCM] Token alınamadı: $e', name: 'Notification');
     }
   }
@@ -107,7 +112,9 @@ class NotificationService {
           .collection('users')
           .doc(userId)
           .set({'fcmToken': token}, SetOptions(merge: true));
+      debugPrint('[FCM_DEBUG] Firestore write success');
     } catch (e) {
+      debugPrint('[FCM_DEBUG] Firestore write error: $e');
       log('[FCM] Token kaydedilemedi: $e', name: 'Notification');
     }
   }
@@ -159,22 +166,22 @@ class NotificationService {
   // ── Bildirime tıklanma (FCM) ────────────────────────────────────────────────
   void _onNotificationTap(RemoteMessage message) {
     log('[FCM] Tap: ${message.data}', name: 'Notification');
-    _navigate(message.data['screen']);
+    final reservationId = message.data['reservationId'] as String?;
+    _navigate(reservationId: reservationId);
   }
 
   // ── Bildirime tıklanma (local notification) ─────────────────────────────────
   void _onLocalNotificationTap(NotificationResponse response) {
     log('[FCM] Local tap: ${response.payload}', name: 'Notification');
-    _navigate(response.payload);
+    _navigate();
   }
 
   // ── Navigasyon ──────────────────────────────────────────────────────────────
-  void _navigate(String? screen) {
+  void _navigate({String? reservationId}) {
     final navigator = navigatorKey?.currentState;
     if (navigator == null) return;
 
-    // Tüm bildirimler home'a yönlendiriyor;
-    // aktif yolculuk stream'i doğru durumu zaten gösteriyor.
-    navigator.pushNamedAndRemoveUntil('/home', (route) => false);
+    navigator.pushNamedAndRemoveUntil('/home', (route) => false,
+        arguments: reservationId != null ? {'reservationId': reservationId} : null);
   }
 }
