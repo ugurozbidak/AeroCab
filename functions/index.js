@@ -1,7 +1,14 @@
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
+const { CloudTasksClient } = require("@google-cloud/tasks");
 
 admin.initializeApp();
+
+const PROJECT_ID = "aerocab-5d474";
+const LOCATION = "europe-west1";
+const QUEUE_NAME = "ride-offer-queue";
+const OFFER_TIMEOUT_SECONDS = 30;
+const FUNCTION_URL = `https://${LOCATION}-${PROJECT_ID}.cloudfunctions.net/processOfferExpired`;
 
 // ── Yardımcı: FCM gönder ─────────────────────────────────────────────────────
 async function sendNotification(userId, title, body, data = {}) {
@@ -41,7 +48,47 @@ async function sendNotification(userId, title, body, data = {}) {
   }
 }
 
-// ── Yeni rezervasyon: online sürücülere bildir ────────────────────────────────
+// ── Yardımcı: Belirli sürücüye teklif gönder ─────────────────────────────────
+async function offerRideToDriver(reservationId, driverId, pickupAddress, dropoffAddress) {
+  await admin.firestore().collection("reservations").doc(reservationId).update({
+    current_offer_driver: driverId,
+    offer_started_at: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  await sendNotification(
+    driverId,
+    "Yeni Yolculuk Talebi",
+    `${pickupAddress} → ${dropoffAddress}`,
+    { reservationId, screen: "home" },
+  );
+}
+
+// ── Yardımcı: Cloud Task planla (30 saniye sonra) ─────────────────────────────
+async function scheduleOfferExpiry(reservationId) {
+  try {
+    const client = new CloudTasksClient();
+    const parent = client.queuePath(PROJECT_ID, LOCATION, QUEUE_NAME);
+
+    const task = {
+      httpRequest: {
+        httpMethod: "POST",
+        url: FUNCTION_URL,
+        headers: { "Content-Type": "application/json" },
+        body: Buffer.from(JSON.stringify({ reservationId })).toString("base64"),
+      },
+      scheduleTime: {
+        seconds: Math.floor(Date.now() / 1000) + OFFER_TIMEOUT_SECONDS,
+      },
+    };
+
+    await client.createTask({ parent, task });
+    functions.logger.log(`Offer expiry task scheduled for ${reservationId}`);
+  } catch (error) {
+    functions.logger.error(`Failed to schedule task for ${reservationId}:`, error);
+  }
+}
+
+// ── Yeni rezervasyon: sürücü sırası oluştur ve ilkine teklif et ───────────────
 exports.onReservationCreated = functions
     .region("europe-west1")
     .firestore.document("reservations/{reservationId}")
@@ -62,17 +109,84 @@ exports.onReservationCreated = functions
 
       if (driversSnap.empty) return null;
 
-      const notifications = driversSnap.docs.map((doc) =>
-        sendNotification(
-            doc.id,
-            "Yeni Yolculuk Talebi",
-            `${pickupAddress} → ${dropoffAddress}`,
-            { reservationId, screen: "home" },
-        ),
-      );
+      const driverIds = driversSnap.docs.map((doc) => doc.id);
 
-      await Promise.all(notifications);
+      // Sürücü sırasını rezervasyona kaydet
+      await snap.ref.update({
+        driver_queue: driverIds,
+        offer_index: 0,
+        current_offer_driver: null,
+      });
+
+      // İlk sürücüye teklif et
+      await offerRideToDriver(reservationId, driverIds[0], pickupAddress, dropoffAddress);
+
+      // 30 saniyelik zamanlayıcı başlat
+      await scheduleOfferExpiry(reservationId);
+
       return null;
+    });
+
+// ── Cloud Task: teklif süresi doldu, sıradaki sürücüye geç ───────────────────
+exports.processOfferExpired = functions
+    .region("europe-west1")
+    .https.onRequest(async (req, res) => {
+      try {
+        const { reservationId } = req.body;
+        if (!reservationId) {
+          res.status(400).send("Missing reservationId");
+          return;
+        }
+
+        const reservationRef = admin.firestore().collection("reservations").doc(reservationId);
+        const reservationDoc = await reservationRef.get();
+
+        if (!reservationDoc.exists) {
+          res.status(200).send("Reservation not found");
+          return;
+        }
+
+        const data = reservationDoc.data();
+
+        // Zaten kabul/iptal edildiyse dur
+        if (data.status !== "created") {
+          res.status(200).send("Reservation already handled");
+          return;
+        }
+
+        const driverQueue = data.driver_queue || [];
+        const currentIndex = data.offer_index || 0;
+        const nextIndex = currentIndex + 1;
+
+        if (nextIndex >= driverQueue.length) {
+          // Sırada sürücü kalmadı
+          functions.logger.log(`No more drivers for reservation ${reservationId}`);
+          await reservationRef.update({
+            current_offer_driver: null,
+          });
+          res.status(200).send("No more drivers in queue");
+          return;
+        }
+
+        const nextDriverId = driverQueue[nextIndex];
+        const pickupAddress = data.pickup_address || "Belirtilmemiş";
+        const dropoffAddress = data.dropoff_address || "Belirtilmemiş";
+
+        // offer_index güncelle
+        await reservationRef.update({ offer_index: nextIndex });
+
+        // Sıradaki sürücüye teklif et
+        await offerRideToDriver(reservationId, nextDriverId, pickupAddress, dropoffAddress);
+
+        // Yeni 30 saniyelik task planla
+        await scheduleOfferExpiry(reservationId);
+
+        functions.logger.log(`Offer moved to driver ${nextDriverId} for reservation ${reservationId}`);
+        res.status(200).send("Offered to next driver");
+      } catch (error) {
+        functions.logger.error("processOfferExpired error:", error);
+        res.status(500).send("Internal error");
+      }
     });
 
 // ── Rezervasyon durum değişikliği ────────────────────────────────────────────
@@ -140,7 +254,6 @@ exports.onReservationStatusChanged = functions
 
       // ── * → cancelled: İptal ──────────────────────────────────────────────
       if (newStatus === "cancelled") {
-        // Atanmış sürücü varsa bildir (yolcu iptal etti)
         if (driverId) {
           await sendNotification(
               driverId,
@@ -149,7 +262,6 @@ exports.onReservationStatusChanged = functions
               baseData,
           );
         }
-        // Yolcuyu her zaman bildir (sürücü iptal ettiyse veya sistem iptali)
         if (passengerId && driverId) {
           await sendNotification(
               passengerId,

@@ -251,9 +251,11 @@ class _DriverDashboardScreenState
   bool _prevRidesEmpty = true;
 
   void _listenToRides() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
     _ridesSub = ref
         .read(databaseServiceProvider)
-        .getCreatedReservationsStream()
+        .getCreatedReservationsStream(user.uid)
         .listen((snap) {
           if (!mounted || _rideState != _DriverRideState.idle) return;
           final rides = snap.docs;
@@ -1052,7 +1054,9 @@ class _RideAlertScreenState extends State<_RideAlertScreen>
   late final AnimationController _pulseCtrl;
   late final AnimationController _ringCtrl;
   Timer? _hapticTimer;
+  Timer? _countdownTimer;
   final AudioPlayer _audioPlayer = AudioPlayer();
+  int _secondsLeft = 30;
 
   @override
   void initState() {
@@ -1071,6 +1075,13 @@ class _RideAlertScreenState extends State<_RideAlertScreen>
     _hapticTimer = Timer.periodic(const Duration(milliseconds: 1500), (_) {
       HapticFeedback.heavyImpact();
     });
+
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() => _secondsLeft--);
+      if (_secondsLeft <= 0) Navigator.pop(context, false);
+    });
+
     _playAlert();
   }
 
@@ -1084,6 +1095,7 @@ class _RideAlertScreenState extends State<_RideAlertScreen>
     _pulseCtrl.dispose();
     _ringCtrl.dispose();
     _hapticTimer?.cancel();
+    _countdownTimer?.cancel();
     _audioPlayer.stop();
     _audioPlayer.dispose();
     super.dispose();
@@ -1109,14 +1121,36 @@ class _RideAlertScreenState extends State<_RideAlertScreen>
       body: SafeArea(
         child: Column(
           children: [
-            // Kapat
-            Align(
-              alignment: Alignment.topLeft,
-              child: TextButton.icon(
-                onPressed: () => Navigator.pop(context, false),
-                icon: const Icon(Icons.close_rounded, color: Colors.white38),
-                label: const Text('Geç',
-                    style: TextStyle(color: Colors.white38, fontSize: 14)),
+            // Üst bar: Geç + Geri sayım
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  TextButton.icon(
+                    onPressed: () => Navigator.pop(context, false),
+                    icon: const Icon(Icons.close_rounded, color: Colors.white38),
+                    label: const Text('Geç',
+                        style: TextStyle(color: Colors.white38, fontSize: 14)),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: _secondsLeft <= 10
+                          ? Colors.red.withValues(alpha: 0.25)
+                          : Colors.white.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      '$_secondsLeft sn',
+                      style: TextStyle(
+                        color: _secondsLeft <= 10 ? Colors.red.shade300 : Colors.white60,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
 
